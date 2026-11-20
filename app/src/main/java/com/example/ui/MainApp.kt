@@ -43,7 +43,11 @@ fun MainApp(
     val userAccount by viewModel.userAccount.collectAsStateWithLifecycle()
     val toastMessage by viewModel.toastMessage.collectAsStateWithLifecycle()
 
-    var currentScreen by remember { mutableStateOf<AppDestination>(AppDestination.Home) }
+    var currentScreen by remember {
+        mutableStateOf<AppDestination>(
+            if (userAccount.isLoggedIn) AppDestination.Home else AppDestination.Auth
+        )
+    }
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(incomingLinkUri) {

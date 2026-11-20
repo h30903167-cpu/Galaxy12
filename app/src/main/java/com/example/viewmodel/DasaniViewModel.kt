@@ -16,18 +16,27 @@ class DasaniViewModel : ViewModel() {
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
 
+    private fun generateAlphaCode(prefix: String, length: Int): String {
+        val letters = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+        val suffix = (1..length).map { letters.random() }.joinToString("")
+        return "$prefix$suffix"
+    }
+
+    private val registeredAccounts = mutableMapOf<String, UserAccount>()
+
     private val _userAccount = MutableStateFlow(
         UserAccount(
-            phone = "+91 98765 43210",
-            loginPassword = "password123",
-            withdrawalPassword = "123456",
-            inviteCode = "c07cdf4c",
-            walletBalance = 600.0, // Initial demo balance so user can test buying Product A immediately!
+            accountId = generateAlphaCode("GLX-", 6),
+            phone = "",
+            loginPassword = "",
+            withdrawalPassword = "",
+            inviteCode = generateAlphaCode("INV-", 5),
+            walletBalance = 0.0,
             totalIncome = 0.0,
             todayIncome = 0.0,
-            totalRecharged = 600.0,
+            totalRecharged = 0.0,
             totalWithdrawn = 0.0,
-            isLoggedIn = true
+            isLoggedIn = false
         )
     )
     val userAccount: StateFlow<UserAccount> = _userAccount.asStateFlow()
@@ -200,39 +209,10 @@ class DasaniViewModel : ViewModel() {
     private val _myDevices = MutableStateFlow<List<PurchasedProduct>>(emptyList())
     val myDevices: StateFlow<List<PurchasedProduct>> = _myDevices.asStateFlow()
 
-    private val _rechargeHistory = MutableStateFlow(
-        listOf(
-            RechargeRecord(
-                id = "rec_init",
-                orderNo = "RC${System.currentTimeMillis() % 1000000}",
-                amount = 600.0,
-                channel = "UPI FastPay (GPay/PhonePe)",
-                utr = "431298765421",
-                date = "2026-11-08 08:30",
-                status = "Success"
-            )
-        )
-    )
+    private val _rechargeHistory = MutableStateFlow<List<RechargeRecord>>(emptyList())
     val rechargeHistory: StateFlow<List<RechargeRecord>> = _rechargeHistory.asStateFlow()
 
-    private val _withdrawalHistory = MutableStateFlow(
-        listOf(
-            WithdrawalRecord(
-                id = "wd_init",
-                orderNo = "WD782910",
-                amount = 250.0,
-                fee = 12.5,
-                finalAmount = 237.5,
-                payoutMethod = "Bank Account",
-                accountNumberOrUpi = "392019482910",
-                holderName = "Galaxy Equipment Partner",
-                ifsc = "SBIN0001234",
-                status = "Success",
-                date = "2026-11-07 19:15",
-                videoProofUrl = "https://example.com/withdrawal_proof_demo.mp4"
-            )
-        )
-    )
+    private val _withdrawalHistory = MutableStateFlow<List<WithdrawalRecord>>(emptyList())
     val withdrawalHistory: StateFlow<List<WithdrawalRecord>> = _withdrawalHistory.asStateFlow()
 
     private val _teamMembers = MutableStateFlow<List<TeamMember>>(emptyList())
@@ -244,8 +224,8 @@ class DasaniViewModel : ViewModel() {
     private val _tutorialVideo = MutableStateFlow(
         WithdrawalTutorialVideo(
             id = "vid_1",
-            title = "Official Galaxy Seeder Withdrawal Tutorial & Instant Proof",
-            videoUrl = "https://example.com/galaxy_seeder_withdrawal_guide.mp4",
+            title = "Official Galaxy Seeder Withdrawal Guide",
+            videoUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
             duration = "02:45",
             description = "Learn how to bind your bank card / UPI, submit withdrawals from ₹200 to ₹1,00,000, and receive funds directly within 10-30 minutes."
         )
@@ -290,30 +270,22 @@ class DasaniViewModel : ViewModel() {
     }
 
     fun login(phoneInput: String, passInput: String): Boolean {
-        val current = _userAccount.value
         val cleanInput = phoneInput.trim()
         if (passInput.isBlank() || cleanInput.isBlank()) {
-            _toastMessage.value = "Please enter valid UPI ID / Phone and password."
+            _toastMessage.value = "Please enter valid UPI ID and password."
             return false
         }
-        val isUpi = cleanInput.contains("@")
-        val updated = if (isUpi) {
-            current.copy(
-                boundUpiId = cleanInput,
-                phone = if (current.phone.isNotBlank()) current.phone else "+91 98765 43210",
-                loginPassword = passInput,
-                isLoggedIn = true,
-                registeredWithUpi = true
-            )
-        } else {
-            val formattedPhone = if (cleanInput.startsWith("+91")) cleanInput else "+91 $cleanInput"
-            current.copy(
-                phone = formattedPhone,
-                loginPassword = passInput,
-                isLoggedIn = true
-            )
+        val key = cleanInput.lowercase(Locale.ROOT)
+        val stored = registeredAccounts[key]
+        if (stored == null) {
+            _toastMessage.value = "Account not registered yet. Please Register first."
+            return false
         }
-        _userAccount.value = updated
+        if (stored.loginPassword != passInput) {
+            _toastMessage.value = "Incorrect password. Please try again."
+            return false
+        }
+        _userAccount.value = stored.copy(isLoggedIn = true)
         _toastMessage.value = "Login Successful! Welcome to Galaxy Seeder."
         return true
     }
@@ -328,13 +300,14 @@ class DasaniViewModel : ViewModel() {
     ): Pair<Boolean, String> {
         val cleanInput = phoneInput.trim()
         val customUpi = upiIdInput.trim()
-        val isUpiMode = cleanInput.contains("@") || customUpi.contains("@")
-
-        if (!isUpiMode && cleanInput.length < 10) {
-            return Pair(false, "Please enter a valid 10-digit phone number or UPI ID (e.g. name@upi)")
+        val resolvedUpi = when {
+            customUpi.isNotBlank() -> customUpi
+            cleanInput.contains("@") -> cleanInput
+            else -> ""
         }
-        if (isUpiMode && cleanInput.length < 4 && customUpi.length < 4) {
-            return Pair(false, "Please enter a valid UPI ID (e.g. yourname@paytm)")
+
+        if (!resolvedUpi.contains("@") || resolvedUpi.length < 5) {
+            return Pair(false, "Please enter a valid UPI ID (e.g. yourname@okaxis)")
         }
         if (pass1.length < 4) {
             return Pair(false, "Login password must be at least 4 characters")
@@ -343,42 +316,50 @@ class DasaniViewModel : ViewModel() {
             return Pair(false, "Passwords do not match")
         }
         if (withdrawPass.length < 4) {
-            return Pair(false, "Withdrawal password must be at least 4 digits")
+            return Pair(false, "Withdrawal PIN must be at least 4 digits")
         }
 
-        val resolvedUpi = when {
-            customUpi.isNotBlank() -> customUpi
-            cleanInput.contains("@") -> cleanInput
-            else -> "${cleanInput}@paytm"
-        }
-
-        val resolvedPhone = if (!cleanInput.contains("@") && cleanInput.isNotBlank()) {
-            if (cleanInput.startsWith("+91")) cleanInput else "+91 $cleanInput"
-        } else {
-            "+91 98765 43210"
-        }
-
-        _userAccount.value = _userAccount.value.copy(
-            phone = resolvedPhone,
+        val newAccountId = generateAlphaCode("GLX-", 6)
+        val newAccount = UserAccount(
+            accountId = newAccountId,
+            phone = "",
             boundUpiId = resolvedUpi,
-            registeredWithUpi = isUpiMode,
+            registeredWithUpi = true,
             loginPassword = pass1,
             withdrawalPassword = withdrawPass,
-            inviteCode = if (invite.isNotBlank()) invite else "c07cdf4c",
-            walletBalance = 600.0,
+            inviteCode = if (invite.isNotBlank()) invite.trim() else generateAlphaCode("INV-", 5),
+            walletBalance = 0.0,
+            totalIncome = 0.0,
+            todayIncome = 0.0,
+            totalRecharged = 0.0,
+            totalWithdrawn = 0.0,
             isLoggedIn = true
         )
-        _toastMessage.value = "Registration Successful with UPI: $resolvedUpi! ₹600 Gift activated."
+        registeredAccounts[resolvedUpi.lowercase(Locale.ROOT)] = newAccount
+        registeredAccounts[newAccountId.lowercase(Locale.ROOT)] = newAccount
+        _userAccount.value = newAccount
+        _toastMessage.value = "Registration Successful with UPI: $resolvedUpi"
         return Pair(true, "Success")
     }
 
     fun logout() {
-        _userAccount.value = _userAccount.value.copy(isLoggedIn = false)
+        val current = _userAccount.value
+        if (current.boundUpiId.isNotBlank()) {
+            registeredAccounts[current.boundUpiId.lowercase(Locale.ROOT)] = current.copy(isLoggedIn = false)
+        }
+        if (current.accountId.isNotBlank()) {
+            registeredAccounts[current.accountId.lowercase(Locale.ROOT)] = current.copy(isLoggedIn = false)
+        }
+        _userAccount.value = UserAccount(
+            accountId = generateAlphaCode("GLX-", 6),
+            inviteCode = generateAlphaCode("INV-", 5),
+            isLoggedIn = false
+        )
         _toastMessage.value = "Logged out successfully"
     }
 
     // Recharge flow with support up to 1 Lakh and beyond
-    fun recharge(amount: Double, channel: String, utr: String): Boolean {
+    fun recharge(amount: Double, channel: String, utr: String = ""): Boolean {
         if (amount < 100) {
             _toastMessage.value = "Minimum recharge amount is ₹100"
             return false
@@ -389,7 +370,7 @@ class DasaniViewModel : ViewModel() {
             orderNo = order,
             amount = amount,
             channel = channel,
-            utr = if (utr.isNotBlank()) utr else "${System.currentTimeMillis()}",
+            utr = utr.ifBlank { order },
             date = dateFormat.format(Date()),
             status = "Success"
         )
@@ -519,8 +500,12 @@ class DasaniViewModel : ViewModel() {
         if (amount > currentAcc.walletBalance) {
             return Pair(false, "Withdrawal amount cannot exceed available balance of ₹${currentAcc.walletBalance.toLong()}")
         }
-        if (withdrawalPasswordInput != currentAcc.withdrawalPassword) {
-            return Pair(false, "Incorrect Withdrawal Password! Please enter the 4-6 digit code set during registration.")
+        val activePin = currentAcc.withdrawalPassword
+        if (withdrawalPasswordInput.length < 4) {
+            return Pair(false, "Enter a 4-6 digit Withdrawal PIN")
+        }
+        if (activePin.isNotBlank() && withdrawalPasswordInput != activePin) {
+            return Pair(false, "Incorrect Withdrawal Password! Please enter the 4-6 digit PIN.")
         }
         if (accountNo.isBlank() && upiId.isBlank()) {
             return Pair(false, "Please provide Bank Account Number or UPI ID")
@@ -583,13 +568,13 @@ class DasaniViewModel : ViewModel() {
         viewModelScope.launch {
             val replyText = when {
                 text.contains("recharge", ignoreCase = true) || text.contains("1 lakh", ignoreCase = true) || text.contains("100000", ignoreCase = true) ->
-                    "To recharge, tap 'Recharge' on the Home screen. You can select ₹550 up to ₹1,00,000! Copy our official UPI ID, pay via GPay/PhonePe, and enter the 12-digit UTR for instant credit."
+                    "To recharge, tap 'Recharge' on the Home screen. Select ₹300 up to ₹1,00,000, pay via GPay/PhonePe/Paytm using the assigned Merchant UPI ID, and tap Confirm Recharge."
                 text.contains("withdraw", ignoreCase = true) || text.contains("video", ignoreCase = true) || text.contains("paisa", ignoreCase = true) ->
-                    "Withdrawals are open 24/7. Minimum is ₹200. Bind your Bank/UPI, enter your Withdrawal Password, and watch our Withdrawal Video tutorial right on the Withdraw page. Funds arrive within 10-30 minutes!"
+                    "Withdrawals are open 24/7. Minimum is ₹200. Bind your UPI ID or Bank, enter your Withdrawal PIN, and watch our Withdrawal Guide Video right on the Withdraw page."
                 text.contains("buy", ignoreCase = true) || text.contains("product", ignoreCase = true) || text.contains("income", ignoreCase = true) || text.contains("seeder", ignoreCase = true) ->
-                    "GL-12 Manual Seeder costs ₹550 and yields ₹125 daily for 120 days (Total ₹15,000). VIP Seeder plans give fast 3-day high yields. Ensure your wallet has sufficient balance, then tap 'Buy now'!"
+                    "GL-12 Manual Seeder ₹300 plan gives ₹75 daily and ₹500 plan gives ₹125 daily for 120 days. Ensure your wallet has sufficient balance, then tap 'Buy now'!"
                 else ->
-                    "Thank you for contacting Galaxy Seeder 24/7 Care. Our live agent is reviewing your query. You can also join our official Telegram Channel or WhatsApp Support from the links below."
+                    "Thank you for contacting Galaxy Seeder 24/7 Care. Our support team is here to help, or join our Official Telegram Care channel above."
             }
             val botMsg = ServiceChatMessage(
                 id = UUID.randomUUID().toString(),
@@ -606,29 +591,38 @@ class DasaniViewModel : ViewModel() {
         _toastMessage.value = message
     }
 
-    fun simulateAddDemoBonus(amount: Double) {
-        val acc = _userAccount.value
-        _userAccount.value = acc.copy(
-            walletBalance = acc.walletBalance + amount
+    fun updateBoundUpi(newUpi: String): Boolean {
+        val clean = newUpi.trim()
+        if (!clean.contains("@") || clean.length < 5) {
+            _toastMessage.value = "Please enter a valid UPI ID (e.g. yourname@okaxis)"
+            return false
+        }
+        val oldKey = _userAccount.value.boundUpiId.lowercase(Locale.ROOT)
+        val updated = _userAccount.value.copy(
+            boundUpiId = clean,
+            registeredWithUpi = true
         )
-        _toastMessage.value = "₹${amount.toLong()} added to wallet!"
+        _userAccount.value = updated
+        if (oldKey.isNotBlank()) registeredAccounts.remove(oldKey)
+        registeredAccounts[clean.lowercase(Locale.ROOT)] = updated
+        if (updated.accountId.isNotBlank()) {
+            registeredAccounts[updated.accountId.lowercase(Locale.ROOT)] = updated
+        }
+        _toastMessage.value = "Linked UPI ID updated to: $clean"
+        return true
     }
 
-    fun simulateAddTeamMember(phone: String, rechargeAmt: Double) {
-        val commission = rechargeAmt * 0.20 // 20% Level 1
-        val newMember = TeamMember(
-            phone = phone,
-            level = 1,
-            recharge = rechargeAmt,
-            commissionEarned = commission,
-            date = dateFormat.format(Date())
+    fun updateBoundBank(holderName: String, bankName: String, accountNo: String, ifsc: String) {
+        val updated = _userAccount.value.copy(
+            boundHolderName = holderName.trim(),
+            boundBankName = bankName.trim(),
+            boundAccountNo = accountNo.trim(),
+            boundIfsc = ifsc.trim().uppercase()
         )
-        _teamMembers.value = listOf(newMember) + _teamMembers.value
-        val acc = _userAccount.value
-        _userAccount.value = acc.copy(
-            walletBalance = acc.walletBalance + commission,
-            totalIncome = acc.totalIncome + commission
-        )
-        _toastMessage.value = "New Level 1 member joined! You earned ₹${commission.toLong()} (20% bonus)."
+        _userAccount.value = updated
+        if (updated.boundUpiId.isNotBlank()) {
+            registeredAccounts[updated.boundUpiId.lowercase(Locale.ROOT)] = updated
+        }
+        _toastMessage.value = "Bank account details saved!"
     }
 }

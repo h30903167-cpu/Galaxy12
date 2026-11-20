@@ -387,7 +387,7 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       margin: 10px 0;
     }
 
@@ -669,30 +669,188 @@
     }
   ];
 
-  const STORAGE_KEY = "galaxy_seeder_web_v1";
-  const UPI_KEY = "galaxy_assigned_merchant_upi";
+  const STORAGE_KEY = "galaxy_seeder_web_v3";
+  const ACCOUNTS_KEY = "galaxy_accounts_v3";
+  const UPI_KEY = "galaxy_assigned_merchant_upi_v4";
+  const UPI_ROT_KEY = "galaxy_upi_rot_idx_v4";
+  const DEVICE_ID_KEY = "galaxy_device_uid_v3";
+
+  // Clean up any legacy demo/cached state from earlier builds
+  (function purgeLegacyCache() {
+    if (!localStorage.getItem(STORAGE_KEY)) {
+      [
+        "galaxy_seeder_web_v1",
+        "galaxy_seeder_web_v2",
+        "galaxy_assigned_merchant_upi_v1",
+        "galaxy_assigned_merchant_upi_v2",
+        "galaxy_assigned_merchant_upi_v3",
+        "galaxy_upi_rot_idx_v3",
+        "galaxy_device_uid_v1",
+        "galaxy_device_uid_v2"
+      ].forEach(k => localStorage.removeItem(k));
+    }
+  })();
+
+  function cryptoRandomInt(max) {
+    if (window.crypto && window.crypto.getRandomValues) {
+      const buf = new Uint32Array(2);
+      window.crypto.getRandomValues(buf);
+      const perf = typeof performance !== "undefined" ? Math.floor(performance.now() * 1000) : 0;
+      const mixed = (buf[0] ^ buf[1] ^ Date.now() ^ perf) >>> 0;
+      return mixed % max;
+    }
+    return Math.floor(Math.random() * max);
+  }
+
+  function generateAlphaCode(prefix, len) {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    let code = prefix;
+    for (let i = 0; i < len; i++) {
+      code += chars[cryptoRandomInt(chars.length)];
+    }
+    return code;
+  }
+
+  function getOrCreateDeviceId() {
+    let id = localStorage.getItem(DEVICE_ID_KEY);
+    if (!id || /[0-9]/.test(id)) {
+      id = generateAlphaCode("GLX-", 6);
+      localStorage.setItem(DEVICE_ID_KEY, id);
+    }
+    return id;
+  }
+
+  function fnv1aHash(str) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return h >>> 0;
+  }
 
   function getAssignedMerchantUpi() {
     const saved = localStorage.getItem(UPI_KEY);
     if (saved && MERCHANT_UPI_POOL.includes(saved)) return saved;
-    const fingerprint = (navigator.userAgent + "|" + screen.width + "x" + screen.height + "|" + Math.random()).toString();
-    let hash = 0;
-    for (let i = 0; i < fingerprint.length; i++) {
-      hash = ((hash << 5) - hash + fingerprint.charCodeAt(i)) >>> 0;
-    }
-    const assigned = MERCHANT_UPI_POOL[hash % MERCHANT_UPI_POOL.length];
+
+    const randSalt = window.crypto && window.crypto.getRandomValues
+      ? Array.from(window.crypto.getRandomValues(new Uint32Array(4))).join("-")
+      : String(Math.random());
+
+    const entropy = [
+      navigator.userAgent || "",
+      screen.width + "x" + screen.height,
+      window.devicePixelRatio || 1,
+      navigator.hardwareConcurrency || 0,
+      navigator.language || "",
+      Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+      Date.now(),
+      typeof performance !== "undefined" ? performance.now() : 0,
+      getOrCreateDeviceId(),
+      randSalt
+    ].join("|");
+
+    const idx = (fnv1aHash(entropy) + cryptoRandomInt(MERCHANT_UPI_POOL.length)) % MERCHANT_UPI_POOL.length;
+    const assigned = MERCHANT_UPI_POOL[idx];
+    localStorage.setItem(UPI_ROT_KEY, String(idx));
     localStorage.setItem(UPI_KEY, assigned);
     return assigned;
   }
 
+  function rotateMerchantUpi(silent = false) {
+    const currentUpi = getAssignedMerchantUpi();
+    const currentIdx = MERCHANT_UPI_POOL.indexOf(currentUpi);
+    const nextIdx = currentIdx >= 0
+      ? (currentIdx + 1) % MERCHANT_UPI_POOL.length
+      : cryptoRandomInt(MERCHANT_UPI_POOL.length);
+    const nextUpi = MERCHANT_UPI_POOL[nextIdx];
+    localStorage.setItem(UPI_ROT_KEY, String(nextIdx));
+    localStorage.setItem(UPI_KEY, nextUpi);
+    if (!silent) {
+      showToast(`UPI switched (${nextIdx + 1}/${MERCHANT_UPI_POOL.length}): ${nextUpi}`);
+      render();
+    }
+    return nextUpi;
+  }
+
+  function switchMerchantUpi() {
+    rotateMerchantUpi(false);
+  }
+
+  function buildUpiQuery(upiId, amount) {
+    const amt = Math.min(100000, Math.max(100, Number(amount) || 300)).toFixed(2);
+    const tr = "GLX" + Date.now();
+    return `pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent("Galaxy Seeder")}&tn=${encodeURIComponent("Galaxy Equipment Recharge")}&tr=${encodeURIComponent(tr)}&am=${encodeURIComponent(amt)}&cu=INR`;
+  }
+
+  function fallbackCopy(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).catch(() => {});
+      return;
+    }
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try { document.execCommand("copy"); } catch (_) {}
+    document.body.removeChild(ta);
+  }
+
+  function launchDeepLink(url, genericFallbackUrl) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    if (genericFallbackUrl && genericFallbackUrl !== url) {
+      setTimeout(() => {
+        if (document.visibilityState === "visible") {
+          const fb = document.createElement("a");
+          fb.href = genericFallbackUrl;
+          fb.style.display = "none";
+          document.body.appendChild(fb);
+          fb.click();
+          document.body.removeChild(fb);
+        }
+      }, 1100);
+    }
+  }
+
+  function payViaUpiApp(appName) {
+    const officialUpi = getAssignedMerchantUpi();
+    const rawAmt = Number(document.getElementById("customAmt")?.value || state.rechargeAmount) || 300;
+    if (rawAmt < 100 || rawAmt > 100000) {
+      return showToast("Enter amount between ₹100 and ₹1,00,000");
+    }
+    state.rechargeAmount = rawAmt;
+    saveState();
+    const query = buildUpiQuery(officialUpi, state.rechargeAmount);
+    const genericUrl = `upi://pay?${query}`;
+    const schemes = {
+      PhonePe: `phonepe://pay?${query}`,
+      GPay: `tez://upi/pay?${query}`,
+      Paytm: `paytmmp://pay?${query}`,
+      BHIM: genericUrl,
+      Any: genericUrl
+    };
+    fallbackCopy(officialUpi);
+    showToast(`UPI copied (${officialUpi}) • Opening ${appName}...`);
+    launchDeepLink(schemes[appName] || genericUrl, genericUrl);
+  }
+
   function defaultState() {
     const params = new URLSearchParams(window.location.search);
-    const refFromUrl = params.get("ref") || "c07cdf4c";
+    const deviceCode = getOrCreateDeviceId();
+    const refFromUrl = (params.get("ref") || "").trim();
     return {
-      screen: "home",
+      screen: "auth",
       category: "DAY_INCOME",
       authTab: "register",
-      registerMode: "upi",
       rechargeTab: 0,
       rechargeAmount: 300,
       rechargeMethod: "UPI FastPay",
@@ -700,31 +858,28 @@
       withdrawMethod: "upi",
       teamLevel: 1,
       user: {
-        isLoggedIn: true,
-        phone: "+91 98765 43210",
-        boundUpiId: "farmer@upi",
-        password: "password123",
-        withdrawPin: "123456",
-        inviteCode: refFromUrl,
-        walletBalance: 600,
+        isLoggedIn: false,
+        accountId: deviceCode,
+        boundUpiId: "",
+        password: "",
+        withdrawPin: "",
+        inviteCode: refFromUrl || generateAlphaCode("INV-", 5),
+        referredBy: refFromUrl,
+        walletBalance: 0,
         totalIncome: 0,
-        totalRecharged: 600,
+        totalRecharged: 0,
         totalWithdrawn: 0,
-        bankName: "State Bank of India",
-        accountNo: "392019482910",
-        holderName: "Galaxy Equipment Partner",
-        ifsc: "SBIN0001234"
+        bankName: "",
+        accountNo: "",
+        holderName: "",
+        ifsc: ""
       },
       devices: [],
-      recharges: [
-        { orderNo: "RC829104", amount: 600, channel: "UPI FastPay", utr: "431298765421", date: "Initial Bonus", status: "Success" }
-      ],
-      withdrawals: [
-        { orderNo: "WD782910", amount: 250, net: 237.5, method: "UPI / Bank", date: "Demo Proof", status: "Success" }
-      ],
+      recharges: [],
+      withdrawals: [],
       team: [],
       tutorialVideo: {
-        title: "Official Galaxy Seeder Withdrawal Guide & Proof",
+        title: "Galaxy Seeder Withdrawal Guide",
         url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
       },
       messages: [
@@ -733,17 +888,58 @@
     };
   }
 
+  function loadAccounts() {
+    try {
+      return JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || "{}");
+    } catch {
+      return {};
+    }
+  }
+
+  function saveCurrentAccountToRegistry() {
+    if (!state.user || !state.user.boundUpiId) return;
+    const accounts = loadAccounts();
+    const snapshot = {
+      user: { ...state.user },
+      devices: state.devices || [],
+      recharges: state.recharges || [],
+      withdrawals: state.withdrawals || [],
+      team: state.team || []
+    };
+    accounts[state.user.boundUpiId.toLowerCase()] = snapshot;
+    if (state.user.accountId) {
+      accounts[state.user.accountId.toLowerCase()] = snapshot;
+    }
+    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
+  }
+
   let state = (() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? Object.assign(defaultState(), JSON.parse(raw)) : defaultState();
+      if (!raw) return defaultState();
+      const parsed = JSON.parse(raw);
+      const base = defaultState();
+      const merged = {
+        ...base,
+        ...parsed,
+        user: { ...base.user, ...(parsed.user || {}) }
+      };
+      if (!merged.user.isLoggedIn) merged.screen = "auth";
+      return merged;
     } catch {
       return defaultState();
     }
   })();
 
+  if (state.user.isLoggedIn && state.screen === "recharge") {
+    rotateMerchantUpi(true);
+  }
+
   function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    if (state.user && state.user.isLoggedIn) {
+      saveCurrentAccountToRegistry();
+    }
   }
 
   function showToast(msg) {
@@ -755,14 +951,20 @@
   }
 
   function copyText(text, label) {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text).then(() => showToast(label + " copied!"));
-    } else {
-      showToast(label + ": " + text);
-    }
+    fallbackCopy(text);
+    showToast(label + " copied!");
   }
 
   function navigate(scr) {
+    if (!state.user.isLoggedIn && scr !== "auth") {
+      state.screen = "auth";
+      saveState();
+      render();
+      return;
+    }
+    if (scr === "recharge") {
+      rotateMerchantUpi(true);
+    }
     state.screen = scr;
     saveState();
     render();
@@ -770,7 +972,7 @@
 
   function getWorkingInviteLink() {
     const base = window.location.origin + window.location.pathname;
-    return `${base}?ref=${encodeURIComponent(state.user.inviteCode || "c07cdf4c")}`;
+    return `${base}?ref=${encodeURIComponent(state.user.inviteCode || state.user.accountId)}`;
   }
 
   function openModal(html) {
@@ -791,50 +993,93 @@
     return new Date().toLocaleString("en-IN", { hour12: true });
   }
 
+  function escapeHtml(str) {
+    return String(str || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
   /* Actions */
   function handleRegister() {
     const idInput = document.getElementById("regId").value.trim();
     const p1 = document.getElementById("regPass1").value;
     const p2 = document.getElementById("regPass2").value;
-    const pin = document.getElementById("regPin").value;
+    const pin = document.getElementById("regPin").value.trim();
     const ref = document.getElementById("regInvite").value.trim();
 
-    if (!idInput || idInput.length < 4) return showToast("Enter valid UPI ID or 10-digit Mobile");
+    if (!idInput || !idInput.includes("@") || idInput.length < 5) {
+      return showToast("Enter valid UPI ID (e.g. name@okaxis)");
+    }
     if (p1.length < 4 || p1 !== p2) return showToast("Passwords must match (min 4 chars)");
-    if (pin.length < 4) return showToast("Withdrawal PIN must be at least 4 digits");
+    if (pin.length < 4 || pin.length > 6) return showToast("Withdrawal PIN must be 4-6 digits");
 
-    const isUpi = idInput.includes("@");
-    state.user.boundUpiId = isUpi ? idInput : `${idInput}@paytm`;
-    state.user.phone = isUpi ? state.user.phone : `+91 ${idInput}`;
-    state.user.password = p1;
-    state.user.withdrawPin = pin;
-    state.user.inviteCode = ref || "c07cdf4c";
-    state.user.walletBalance = 600;
-    state.user.isLoggedIn = true;
-    showToast("Registered with UPI: " + state.user.boundUpiId + " (+₹600 Gift!)");
-    navigate("home");
+    const accounts = loadAccounts();
+    if (accounts[idInput.toLowerCase()]) {
+      return showToast("UPI ID already registered. Please Login.");
+    }
+
+    const fresh = defaultState();
+    state = {
+      ...fresh,
+      screen: "home",
+      user: {
+        ...fresh.user,
+        isLoggedIn: true,
+        accountId: generateAlphaCode("GLX-", 6),
+        boundUpiId: idInput,
+        password: p1,
+        withdrawPin: pin,
+        inviteCode: generateAlphaCode("INV-", 5),
+        referredBy: ref,
+        walletBalance: 0,
+        totalIncome: 0,
+        totalRecharged: 0,
+        totalWithdrawn: 0
+      }
+    };
+    saveState();
+    showToast("Registered with UPI: " + state.user.boundUpiId);
+    render();
   }
 
   function handleLogin() {
     const idInput = document.getElementById("loginId").value.trim();
     const pass = document.getElementById("loginPass").value;
-    if (!idInput || !pass) return showToast("Enter UPI / Mobile and Password");
-    if (idInput.includes("@")) state.user.boundUpiId = idInput;
-    else state.user.phone = `+91 ${idInput}`;
-    state.user.password = pass;
-    state.user.isLoggedIn = true;
+    if (!idInput || !pass) return showToast("Enter your registered UPI ID and Password");
+
+    const accounts = loadAccounts();
+    const matched = accounts[idInput.toLowerCase()];
+    if (!matched) {
+      return showToast("Account not found. Please Register first.");
+    }
+    if (matched.user.password !== pass) {
+      return showToast("Incorrect password!");
+    }
+
+    const fresh = defaultState();
+    state = {
+      ...fresh,
+      screen: "home",
+      user: { ...fresh.user, ...matched.user, isLoggedIn: true },
+      devices: matched.devices || [],
+      recharges: matched.recharges || [],
+      withdrawals: matched.withdrawals || [],
+      team: matched.team || []
+    };
+    saveState();
     showToast("Login successful!");
-    navigate("home");
+    render();
   }
 
-  function autoFillAuth() {
-    if (document.getElementById("regId")) document.getElementById("regId").value = "farmer987@upi";
-    if (document.getElementById("loginId")) document.getElementById("loginId").value = "farmer987@upi";
-    if (document.getElementById("regPass1")) document.getElementById("regPass1").value = "123456";
-    if (document.getElementById("regPass2")) document.getElementById("regPass2").value = "123456";
-    if (document.getElementById("regPin")) document.getElementById("regPin").value = "123456";
-    if (document.getElementById("loginPass")) document.getElementById("loginPass").value = "123456";
-    showToast("Demo UPI account auto-filled!");
+  function logoutAccount() {
+    saveCurrentAccountToRegistry();
+    state = defaultState();
+    state.authTab = "login";
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    showToast("Logged out successfully");
+    render();
   }
 
   function handleBuyClick(prodId) {
@@ -901,44 +1146,86 @@
     render();
   }
 
-  function submitRecharge(isInstant) {
+  function selectRechargeMethod(methodName) {
+    state.rechargeMethod = methodName;
+    if (methodName === "UPI FastPay" || methodName === "Dynamic QR") {
+      rotateMerchantUpi(true);
+    }
+    saveState();
+    render();
+  }
+
+  function onCustomAmtInput(val) {
+    const num = Number(val);
+    if (!Number.isNaN(num) && num >= 1 && num <= 100000) {
+      state.rechargeAmount = num;
+      const lbl = document.getElementById("payBtnAmt");
+      if (lbl) lbl.textContent = formatRs(num);
+    }
+  }
+
+  function submitRecharge() {
     const amt = Number(document.getElementById("customAmt")?.value || state.rechargeAmount);
-    const utr = isInstant ? String(Math.floor(100000000000 + Math.random() * 899999999999)) : (document.getElementById("utrInput")?.value.trim() || "");
+    const officialUpi = getAssignedMerchantUpi();
     if (amt < 100 || amt > 100000) return showToast("Recharge must be ₹100 to ₹1,00,000");
-    if (!isInstant && utr.length < 6) return showToast("Enter valid 12-digit UTR / Ref Number");
 
     state.user.walletBalance += amt;
     state.user.totalRecharged += amt;
     state.recharges.unshift({
       orderNo: "RC" + String(Date.now()).slice(-6),
       amount: amt,
-      channel: isInstant ? `Direct UPI (${state.user.boundUpiId})` : state.rechargeMethod,
-      utr,
+      channel: `${state.rechargeMethod} (${officialUpi})`,
       date: nowStr(),
       status: "Success"
     });
     saveState();
-    showToast(`Recharge of ${formatRs(amt)} Successful!`);
+    rotateMerchantUpi(true);
+    showToast(`Recharge of ${formatRs(amt)} Confirmed!`);
     render();
   }
 
   function submitWithdrawal() {
     const amt = Number(document.getElementById("wdAmt")?.value || 0);
-    const pin = document.getElementById("wdPin")?.value || "";
-    const upi = document.getElementById("wdUpi")?.value.trim() || state.user.boundUpiId;
+    const pin = document.getElementById("wdPin")?.value.trim() || "";
+
     if (amt < 200) return showToast("Minimum withdrawal is ₹200");
     if (amt > state.user.walletBalance) return showToast("Insufficient wallet balance");
-    if (pin !== state.user.withdrawPin) return showToast("Incorrect Withdrawal PIN (default: 123456)");
+    if (pin.length < 4) return showToast("Enter 4-6 digit Withdrawal PIN");
+
+    if (!state.user.withdrawPin) {
+      state.user.withdrawPin = pin;
+    } else if (pin !== state.user.withdrawPin) {
+      return showToast("Incorrect Withdrawal PIN");
+    }
+
+    let methodLabel = "";
+    if (state.withdrawMethod === "upi") {
+      const upi = document.getElementById("wdUpi")?.value.trim() || "";
+      if (!upi || !upi.includes("@")) return showToast("Enter valid receiving UPI ID");
+      state.user.boundUpiId = upi;
+      methodLabel = `UPI: ${upi}`;
+    } else {
+      const bankName = document.getElementById("wdBankName")?.value.trim() || "";
+      const accNo = document.getElementById("wdAccNo")?.value.trim() || "";
+      const ifsc = document.getElementById("wdIfsc")?.value.trim().toUpperCase() || "";
+      const holder = document.getElementById("wdHolder")?.value.trim() || "";
+      if (!bankName || !accNo || !ifsc || !holder) return showToast("Fill all bank account fields");
+      state.user.bankName = bankName;
+      state.user.accountNo = accNo;
+      state.user.ifsc = ifsc;
+      state.user.holderName = holder;
+      methodLabel = `Bank: ${bankName} (${ifsc})`;
+    }
+
     const fee = amt * 0.05;
     const net = amt - fee;
     state.user.walletBalance -= amt;
     state.user.totalWithdrawn += amt;
-    state.user.boundUpiId = upi;
     state.withdrawals.unshift({
       orderNo: "WD" + String(Date.now()).slice(-6),
       amount: amt,
       net,
-      method: state.withdrawMethod === "upi" ? `UPI: ${upi}` : `Bank: ${state.user.bankName}`,
+      method: methodLabel,
       date: nowStr(),
       status: "Success"
     });
@@ -947,33 +1234,32 @@
     render();
   }
 
+  function saveAccountUpi() {
+    const upi = document.getElementById("myUpiInput")?.value.trim() || "";
+    if (!upi || !upi.includes("@")) return showToast("Enter valid UPI ID (e.g. name@okaxis)");
+    const oldUpi = (state.user.boundUpiId || "").toLowerCase();
+    if (oldUpi && oldUpi !== upi.toLowerCase()) {
+      const accounts = loadAccounts();
+      delete accounts[oldUpi];
+      localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
+    }
+    state.user.boundUpiId = upi;
+    saveState();
+    showToast("Linked UPI ID updated to: " + upi);
+    render();
+  }
+
   function sendChat(msgText) {
     const input = document.getElementById("chatInput");
     const text = (msgText || input?.value || "").trim();
     if (!text) return;
     state.messages.push({ sender: "You", text, user: true });
-    let reply = "Thank you for contacting Galaxy Care 24/7. Please join our Telegram or WhatsApp for priority support.";
-    if (/recharge|lakh|100000/i.test(text)) reply = "Tap Recharge on Home -> select ₹300 up to ₹1,00,000 -> pay to your assigned Merchant UPI ID -> submit UTR for instant credit.";
-    else if (/withdraw|video/i.test(text)) reply = "Go to Withdraw -> select UPI/Bank, enter amount (Min ₹200) & PIN. Watch the live Withdrawal Proof Video right on the Withdraw page!";
+    let reply = "Thank you for contacting Galaxy Care 24/7. Join our official Telegram channel for priority support.";
+    if (/recharge|lakh|100000/i.test(text)) reply = "Tap Recharge on Home -> select ₹300 up to ₹1,00,000 -> pay via your UPI App -> tap Confirm Recharge.";
+    else if (/withdraw|video/i.test(text)) reply = "Go to Withdraw -> enter UPI ID or Bank details, amount (Min ₹200) & PIN. Watch the live Withdrawal Guide Video on the Withdraw page.";
     else if (/buy|plan|300|500/i.test(text)) reply = "₹300 GL-12 gives ₹75/day and ₹500 GL-12 gives ₹125/day for 120 days. Both plans are LIVE!";
     state.messages.push({ sender: "Galaxy Care", text: reply, user: false });
     saveState();
-    render();
-  }
-
-  function simulateTeamJoin() {
-    const commission = 550 * 0.20;
-    state.team.unshift({
-      phone: "+91 98" + Math.floor(100 + Math.random() * 899) + " " + Math.floor(1000 + Math.random() * 8999),
-      level: 1,
-      recharge: 550,
-      bonus: commission,
-      date: nowStr()
-    });
-    state.user.walletBalance += commission;
-    state.user.totalIncome += commission;
-    saveState();
-    showToast(`New Level 1 member joined! +${formatRs(commission)} bonus`);
     render();
   }
 
@@ -990,8 +1276,8 @@
   function openSaveVideoModal() {
     openModal(`
       <h3>🎥 Update Withdrawal Video</h3>
-      <div class="field"><label>Video Title</label><input id="vidTitleInput" class="input" value="${state.tutorialVideo.title}"></div>
-      <div class="field"><label>MP4 / Cloud Video URL</label><input id="vidUrlInput" class="input" value="${state.tutorialVideo.url}"></div>
+      <div class="field"><label>Video Title</label><input id="vidTitleInput" class="input" value="${escapeHtml(state.tutorialVideo.title)}"></div>
+      <div class="field"><label>MP4 / Cloud Video URL</label><input id="vidUrlInput" class="input" value="${escapeHtml(state.tutorialVideo.url)}"></div>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
         <button class="btn btn-primary" onclick="saveVideoUrl()">Save Video</button>
@@ -1057,18 +1343,17 @@
             <button class="pill-tab ${state.authTab === 'register' ? 'active' : ''}" onclick="state.authTab='register'; render()">Register</button>
           </div>
           ${state.authTab === "register" ? `
-            <div class="field"><label>UPI ID (e.g. name@upi) or 10-Digit Mobile</label><input id="regId" class="input" placeholder="farmer987@upi or 9876543210"></div>
+            <div class="field"><label>Your UPI ID (for payouts)</label><input id="regId" class="input" placeholder="e.g. yourname@okaxis"></div>
             <div class="field"><label>Login Password</label><input id="regPass1" type="password" class="input" placeholder="Min 4 characters"></div>
             <div class="field"><label>Confirm Password</label><input id="regPass2" type="password" class="input" placeholder="Re-enter password"></div>
-            <div class="field"><label>Withdrawal PIN</label><input id="regPin" type="password" class="input" placeholder="4-6 digit PIN"></div>
-            <div class="field"><label>Invitation Code</label><input id="regInvite" class="input" value="${state.user.inviteCode}"></div>
+            <div class="field"><label>Withdrawal PIN</label><input id="regPin" type="password" maxlength="6" class="input" placeholder="4-6 digit PIN"></div>
+            <div class="field"><label>Invitation Code (Optional)</label><input id="regInvite" class="input" value="${escapeHtml(state.user.referredBy || '')}" placeholder="Enter invite code if any"></div>
             <button class="btn btn-primary" onclick="handleRegister()">Register & Bind UPI</button>
           ` : `
-            <div class="field"><label>UPI ID or Mobile Number</label><input id="loginId" class="input" placeholder="farmer987@upi or 9876543210"></div>
+            <div class="field"><label>Registered UPI ID</label><input id="loginId" class="input" placeholder="e.g. yourname@okaxis"></div>
             <div class="field"><label>Password</label><input id="loginPass" type="password" class="input" placeholder="Enter Password"></div>
             <button class="btn btn-primary" onclick="handleLogin()">Login with Password</button>
           `}
-          <button class="btn btn-outline" style="margin-top:10px;" onclick="autoFillAuth()">⚡ Auto-fill UPI Demo Account</button>
         </div>`;
       return;
     }
@@ -1138,7 +1423,7 @@
     if (state.screen === "recharge") {
       const presets = [300, 500, 1800, 4900, 12000, 35000];
       const methods = ["UPI FastPay", "Dynamic QR", "Bank IMPS / RTGS", "Net Banking"];
-      const upiUrl = `upi://pay?pa=${encodeURIComponent(officialUpi)}&pn=GalaxyAgriculture&am=${state.rechargeAmount}&cu=INR`;
+      const activeIdx = MERCHANT_UPI_POOL.indexOf(officialUpi) + 1;
 
       root.innerHTML = `
         <div class="pill-tabs">
@@ -1158,40 +1443,42 @@
 
           <div class="field">
             <label>Custom Amount (₹100 – ₹1,00,000)</label>
-            <input id="customAmt" type="number" min="100" max="100000" class="input" value="${state.rechargeAmount}" onchange="state.rechargeAmount=Math.min(100000, Math.max(100, Number(this.value)||300))">
+            <input id="customAmt" type="number" min="100" max="100000" class="input" value="${state.rechargeAmount}" oninput="onCustomAmtInput(this.value)" onchange="state.rechargeAmount=Math.min(100000, Math.max(100, Number(this.value)||300)); saveState()">
           </div>
 
           <div style="font-size:14px;font-weight:700;margin:12px 0 8px;">Select Payment Method</div>
           ${methods.map(m => `
-            <div class="method-card ${state.rechargeMethod === m ? 'active' : ''}" onclick="state.rechargeMethod='${m}'; render()">
+            <div class="method-card ${state.rechargeMethod === m ? 'active' : ''}" onclick="selectRechargeMethod('${m}')">
               <strong>${m}</strong>
               <span style="color:var(--primary);font-size:12px;">${state.rechargeMethod === m ? '● Selected' : 'Select'}</span>
             </div>
           `).join("")}
 
           <div class="card" style="margin-top:12px;">
-            <div style="font-size:12px;color:var(--text-sec);">Verified Merchant UPI ID (Fixed for This Device)</div>
+            <div class="row-between">
+              <span style="font-size:12px;color:var(--text-sec);">Active Merchant UPI (${activeIdx}/${MERCHANT_UPI_POOL.length})</span>
+              <button class="btn btn-outline btn-sm" style="min-height:30px;padding:4px 12px;font-size:11px;" onclick="switchMerchantUpi()">↻ Change UPI</button>
+            </div>
             <div class="upi-box">
               <strong style="font-size:15px;color:#fff;word-break:break-all;">${officialUpi}</strong>
               <button class="btn btn-primary btn-sm" onclick="copyText('${officialUpi}','Merchant UPI')">Copy</button>
             </div>
+            <p style="font-size:11px;color:var(--text-sec);margin-bottom:8px;">If payment fails on one UPI ID, tap <strong>↻ Change UPI</strong> to switch to another active UPI ID.</p>
             <div class="upi-apps">
-              ${["PhonePe","GPay","Paytm","BHIM"].map(app => `<button class="upi-app-btn" onclick="window.location.href='${upiUrl}'">${app}</button>`).join("")}
+              ${["PhonePe","GPay","Paytm","BHIM"].map(app => `<button class="upi-app-btn" onclick="payViaUpiApp('${app}')">${app}</button>`).join("")}
             </div>
-            <button class="btn btn-primary" style="margin-bottom:12px;" onclick="submitRecharge(true)">⚡ Instant Pay ${formatRs(state.rechargeAmount)} (${state.user.boundUpiId})</button>
-            <div class="field">
-              <label>Or Enter 12-Digit UTR / Reference Number</label>
-              <input id="utrInput" class="input" maxlength="12" placeholder="e.g. 431289456721">
-            </div>
-            <button class="btn btn-outline" onclick="submitRecharge(false)">Submit UTR & Confirm</button>
+            <button class="btn btn-primary" style="margin-bottom:10px;" onclick="payViaUpiApp('Any')">💳 Pay <span id="payBtnAmt">${formatRs(state.rechargeAmount)}</span> via UPI App</button>
+            <button class="btn btn-outline" onclick="submitRecharge()">Confirm Recharge</button>
           </div>
+        ` : (state.recharges.length === 0 ? `
+          <div class="card" style="text-align:center;color:var(--text-sec);font-size:13px;">No recharge records yet.</div>
         ` : state.recharges.map(r => `
           <div class="card">
             <div class="row-between"><strong>Order ${r.orderNo}</strong><strong style="color:var(--primary)">+${formatRs(r.amount)}</strong></div>
-            <div class="row-between" style="font-size:12px;color:var(--text-sec);margin-top:4px;"><span>${r.channel}</span><span>UTR: ${r.utr}</span></div>
+            <div style="font-size:12px;color:var(--text-sec);margin-top:4px;">${escapeHtml(r.channel)}</div>
             <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${r.date} • ${r.status}</div>
           </div>
-        `).join("")}
+        `).join(""))}
       `;
       return;
     }
@@ -1214,51 +1501,53 @@
               <button class="pill-tab ${state.withdrawMethod === 'bank' ? 'active' : ''}" onclick="state.withdrawMethod='bank'; render()">Bank Account</button>
             </div>
             ${state.withdrawMethod === "upi" ? `
-              <div class="field"><label>Receiving UPI ID</label><input id="wdUpi" class="input" value="${state.user.boundUpiId}"></div>
+              <div class="field"><label>Receiving UPI ID</label><input id="wdUpi" class="input" value="${escapeHtml(state.user.boundUpiId)}" placeholder="e.g. yourname@okaxis"></div>
             ` : `
-              <div style="font-size:12px;color:var(--text-sec);margin-bottom:10px;">
-                Bank: <strong style="color:#fff">${state.user.bankName}</strong> • A/C: <strong style="color:#fff">${state.user.accountNo}</strong> (${state.user.ifsc})
-              </div>
+              <div class="field"><label>Bank Name</label><input id="wdBankName" class="input" value="${escapeHtml(state.user.bankName)}" placeholder="Enter Bank Name"></div>
+              <div class="field"><label>Account Number</label><input id="wdAccNo" class="input" value="${escapeHtml(state.user.accountNo)}" placeholder="Enter Account Number"></div>
+              <div class="field"><label>IFSC Code</label><input id="wdIfsc" class="input" value="${escapeHtml(state.user.ifsc)}" placeholder="Enter IFSC Code"></div>
+              <div class="field"><label>Account Holder Name</label><input id="wdHolder" class="input" value="${escapeHtml(state.user.holderName)}" placeholder="Enter Holder Name"></div>
             `}
-            <div class="field"><label>Withdrawal PIN</label><input id="wdPin" type="password" class="input" placeholder="Enter PIN (default 123456)"></div>
+            <div class="field"><label>Withdrawal PIN</label><input id="wdPin" type="password" maxlength="6" class="input" placeholder="${state.user.withdrawPin ? 'Enter your Withdrawal PIN' : 'Create 4-6 digit Withdrawal PIN'}"></div>
             <button class="btn btn-primary" onclick="submitWithdrawal()">Confirm Withdrawal</button>
           </div>
 
           <div class="card">
             <div class="row-between" style="margin-bottom:8px;">
-              <strong>🎥 Withdrawal Video Guide & Proof</strong>
+              <strong>🎥 Withdrawal Video Guide</strong>
               <button class="btn btn-outline btn-sm" onclick="openSaveVideoModal()">Update Video</button>
             </div>
-            <p style="font-size:12px;color:var(--text-sec);margin-bottom:8px;">${state.tutorialVideo.title}</p>
-            <video controls style="width:100%;border-radius:12px;background:#000;" src="${state.tutorialVideo.url}"></video>
+            <p style="font-size:12px;color:var(--text-sec);margin-bottom:8px;">${escapeHtml(state.tutorialVideo.title)}</p>
+            <video controls style="width:100%;border-radius:12px;background:#000;" src="${escapeHtml(state.tutorialVideo.url)}"></video>
           </div>
+        ` : (state.withdrawals.length === 0 ? `
+          <div class="card" style="text-align:center;color:var(--text-sec);font-size:13px;">No withdrawal records yet.</div>
         ` : state.withdrawals.map(w => `
           <div class="card">
             <div class="row-between"><strong>Order ${w.orderNo}</strong><strong style="color:var(--primary)">-${formatRs(w.amount)}</strong></div>
-            <div class="row-between" style="font-size:12px;color:var(--text-sec);margin-top:4px;"><span>${w.method}</span><span style="color:var(--primary)">Net: ${formatRs(w.net)}</span></div>
+            <div class="row-between" style="font-size:12px;color:var(--text-sec);margin-top:4px;"><span>${escapeHtml(w.method)}</span><span style="color:var(--primary)">Net: ${formatRs(w.net)}</span></div>
             <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${w.date} • ${w.status}</div>
           </div>
-        `).join("")}
+        `).join(""))}
       `;
       return;
     }
 
     if (state.screen === "service") {
       root.innerHTML = `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-          <button class="btn btn-outline btn-sm" style="width:100%" onclick="window.open('https://t.me/GalaxySeederCare','_blank')">✈️ Telegram Care</button>
-          <button class="btn btn-outline btn-sm" style="width:100%" onclick="window.open('https://wa.me/919876543210','_blank')">📞 WhatsApp Care</button>
+        <div style="margin-bottom:12px;">
+          <button class="btn btn-outline btn-sm" style="width:100%" onclick="window.open('https://t.me/GalaxySeederCare','_blank')">✈️ Official Telegram Care</button>
         </div>
         <div class="chat-box">
           ${state.messages.map(m => `
             <div class="bubble ${m.user ? 'user' : 'bot'}">
-              <div style="font-size:10px;opacity:0.75;margin-bottom:2px;">${m.sender}</div>
-              ${m.text}
+              <div style="font-size:10px;opacity:0.75;margin-bottom:2px;">${escapeHtml(m.sender)}</div>
+              ${escapeHtml(m.text)}
             </div>
           `).join("")}
         </div>
         <div style="display:flex;gap:8px;">
-          <input id="chatInput" class="input" placeholder="Ask about recharge, plans, withdraw...">
+          <input id="chatInput" class="input" placeholder="Ask about recharge, plans, withdraw..." onkeydown="if(event.key==='Enter')sendChat()">
           <button class="btn btn-primary btn-sm" onclick="sendChat()">Send</button>
         </div>
       `;
@@ -1300,13 +1589,8 @@
         </div>
         <div class="card">
           ${levelList.length === 0 ? `<p style="text-align:center;color:var(--text-sec);font-size:13px;">No LV.${state.teamLevel} members yet. Share your link!</p>` :
-            levelList.map(m => `<div class="row-between" style="padding:8px 0;border-bottom:1px solid var(--border);"><span>${m.phone}</span><strong style="color:var(--primary)">+${formatRs(m.bonus)}</strong></div>`).join("")}
+            levelList.map(m => `<div class="row-between" style="padding:8px 0;border-bottom:1px solid var(--border);"><span>Partner ${escapeHtml(m.memberId || 'GL')}</span><strong style="color:var(--primary)">+${formatRs(m.bonus)}</strong></div>`).join("")}
           <button class="btn btn-teal" style="margin-top:12px;" onclick="shareAppLink()">Share Working App Link</button>
-        </div>
-        <div class="card">
-          <strong style="color:var(--primary);font-size:13px;">⚡ Simulate Referral Join (Test)</strong>
-          <p style="font-size:12px;color:var(--text-sec);margin:6px 0 10px;">Test earning 20% commission (₹110) when a friend joins & recharges ₹550.</p>
-          <button class="btn btn-outline" onclick="simulateTeamJoin()">+ Simulate Level 1 Join</button>
         </div>
       `;
       return;
@@ -1320,12 +1604,12 @@
           <h3>Invite Friends & Earn 23% Commission</h3>
           <p style="font-size:12px;color:var(--text-sec);margin:6px 0 14px;">Level 1: 20% • Level 2: 2% • Level 3: 1%</p>
           <div class="upi-box">
-            <div style="text-align:left;"><div style="font-size:11px;color:var(--text-sec);">Invitation Code</div><strong>${state.user.inviteCode}</strong></div>
-            <button class="btn btn-primary btn-sm" onclick="copyText('${state.user.inviteCode}','Invite Code')">Copy Code</button>
+            <div style="text-align:left;"><div style="font-size:11px;color:var(--text-sec);">Invitation Code</div><strong>${escapeHtml(state.user.inviteCode)}</strong></div>
+            <button class="btn btn-primary btn-sm" onclick="copyText('${escapeHtml(state.user.inviteCode)}','Invite Code')">Copy Code</button>
           </div>
           <div class="upi-box">
-            <div style="text-align:left;overflow:hidden;"><div style="font-size:11px;color:var(--text-sec);">Working Website Link</div><div style="font-size:12px;color:var(--primary);word-break:break-all;">${link}</div></div>
-            <button class="btn btn-primary btn-sm" onclick="copyText('${link}','Working Link')">Copy</button>
+            <div style="text-align:left;overflow:hidden;"><div style="font-size:11px;color:var(--text-sec);">Working Website Link</div><div style="font-size:12px;color:var(--primary);word-break:break-all;">${escapeHtml(link)}</div></div>
+            <button class="btn btn-primary btn-sm" onclick="copyText('${escapeHtml(link)}','Working Link')">Copy</button>
           </div>
           <button class="btn btn-teal" style="margin-top:8px;" onclick="shareAppLink()">Share Working Website Link</button>
         </div>
@@ -1337,7 +1621,10 @@
       root.innerHTML = `
         <div class="card">
           <div class="row-between">
-            <div><strong style="font-size:17px;">${state.user.phone}</strong><div style="font-size:12px;color:var(--primary);margin-top:2px;">Linked UPI: ${state.user.boundUpiId}</div></div>
+            <div>
+              <strong style="font-size:16px;word-break:break-all;">${state.user.boundUpiId ? escapeHtml(state.user.boundUpiId) : 'Galaxy Member'}</strong>
+              <div style="font-size:12px;color:var(--primary);margin-top:2px;">Invite Code: ${escapeHtml(state.user.inviteCode)}</div>
+            </div>
             <span class="badge" style="background:var(--gold);color:#000;">VIP 1</span>
           </div>
         </div>
@@ -1350,7 +1637,14 @@
             <span>Withdrawn: <strong style="color:var(--teal)">${formatRs(state.user.totalWithdrawn)}</strong></span>
           </div>
         </div>
-        <button class="btn btn-danger" onclick="state.user.isLoggedIn=false; saveState(); navigate('auth')">Logout from Account</button>
+        <div class="card">
+          <div class="field">
+            <label>Bind / Change Your Payout UPI ID</label>
+            <input id="myUpiInput" class="input" value="${escapeHtml(state.user.boundUpiId)}" placeholder="e.g. yourname@okaxis">
+          </div>
+          <button class="btn btn-primary" onclick="saveAccountUpi()">Save UPI ID</button>
+        </div>
+        <button class="btn btn-danger" onclick="logoutAccount()">Logout / Switch Account</button>
       `;
     }
   }

@@ -83,7 +83,7 @@ fun ServiceScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Official Quick Support Channels (Telegram, WhatsApp)
+            // Official Quick Support Channel (Telegram)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -94,7 +94,7 @@ fun ServiceScreen(
                 // Telegram Support Card
                 Card(
                     modifier = Modifier
-                        .weight(1f)
+                        .fillMaxWidth()
                         .clickable {
                             val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/GalaxySeederCare"))
                             try { context.startActivity(intent) } catch (_: Exception) {}
@@ -110,33 +110,8 @@ fun ServiceScreen(
                         Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = Color(0xFF0088CC), modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
-                            Text("Telegram Care", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            Text("@GalaxyCare", color = Color(0xFF0088CC), fontSize = 10.sp)
-                        }
-                    }
-                }
-
-                // WhatsApp Support Card
-                Card(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/919876543210"))
-                            try { context.startActivity(intent) } catch (_: Exception) {}
-                        },
-                    shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF25D366).copy(alpha = 0.2f)),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF25D366))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.Phone, contentDescription = null, tint = Color(0xFF25D366), modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text("WhatsApp Care", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            Text("+91 98000...", color = Color(0xFF25D366), fontSize = 10.sp)
+                            Text("Official Telegram Care", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("@GalaxySeederCare", color = Color(0xFF0088CC), fontSize = 10.sp)
                         }
                     }
                 }

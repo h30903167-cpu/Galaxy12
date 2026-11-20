@@ -40,14 +40,12 @@ fun AuthScreen(
 ) {
     val incomingReferralCode by viewModel.incomingReferralCode.collectAsStateWithLifecycle()
     var isRegisterTab by remember { mutableStateOf(true) }
-    var registerMode by remember { mutableStateOf(0) } // 0: Register with UPI ID, 1: Register with Mobile Number
     var upiInput by remember { mutableStateOf("") }
-    var phoneInput by remember { mutableStateOf("") }
-    var loginIdentifierInput by remember { mutableStateOf("") } // Can be UPI ID or Phone
+    var loginIdentifierInput by remember { mutableStateOf("") }
     var passwordInput by remember { mutableStateOf("") }
     var confirmPasswordInput by remember { mutableStateOf("") }
     var withdrawalPasswordInput by remember { mutableStateOf("") }
-    var inviteCodeInput by remember { mutableStateOf(incomingReferralCode ?: "c07cdf4c") }
+    var inviteCodeInput by remember { mutableStateOf(incomingReferralCode ?: "") }
 
     LaunchedEffect(incomingReferralCode) {
         incomingReferralCode?.let { code ->
@@ -195,126 +193,51 @@ fun AuthScreen(
                     Spacer(modifier = Modifier.height(18.dp))
 
                     if (isRegisterTab) {
-                        // Registration Mode Choice: UPI ID vs Mobile Number
+                        OutlinedTextField(
+                            value = upiInput,
+                            onValueChange = { upiInput = it.trim() },
+                            label = { Text("Your UPI ID (VPA)") },
+                            placeholder = { Text("e.g. yourname@okaxis", color = Color(0xFF6B7D82), fontSize = 13.sp) },
+                            leadingIcon = {
+                                Icon(Icons.Default.AccountBalanceWallet, contentDescription = null, tint = DasaniPrimary)
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color(0xFF1A2124),
+                                unfocusedContainerColor = Color(0xFF1A2124),
+                                focusedBorderColor = DasaniPrimary,
+                                unfocusedBorderColor = Color(0xFF263238),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("upi_input_register")
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color(0xFF0F2620), RoundedCornerShape(12.dp))
-                                .padding(4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                .background(Color(0xFF0D251E), RoundedCornerShape(8.dp))
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            FilterChip(
-                                selected = registerMode == 0,
-                                onClick = { registerMode = 0 },
-                                label = { Text("Register with UPI ID", fontSize = 12.sp, fontWeight = FontWeight.Bold) },
-                                leadingIcon = {
-                                    Icon(Icons.Default.QrCode2, contentDescription = null, modifier = Modifier.size(16.dp))
-                                },
-                                modifier = Modifier.weight(1f),
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = DasaniPrimary,
-                                    selectedLabelColor = Color(0xFF041C1A),
-                                    containerColor = Color.Transparent,
-                                    labelColor = DasaniTextSecondary
-                                )
+                            Icon(Icons.Default.Verified, contentDescription = null, tint = DasaniPrimary, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Binds your UPI ID for payouts & withdrawals",
+                                color = DasaniTextSecondary,
+                                fontSize = 11.sp
                             )
-                            FilterChip(
-                                selected = registerMode == 1,
-                                onClick = { registerMode = 1 },
-                                label = { Text("Mobile Number", fontSize = 12.sp, fontWeight = FontWeight.Bold) },
-                                leadingIcon = {
-                                    Icon(Icons.Default.PhoneAndroid, contentDescription = null, modifier = Modifier.size(16.dp))
-                                },
-                                modifier = Modifier.weight(1f),
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = DasaniPrimary,
-                                    selectedLabelColor = Color(0xFF041C1A),
-                                    containerColor = Color.Transparent,
-                                    labelColor = DasaniTextSecondary
-                                )
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        if (registerMode == 0) {
-                            // UPI ID Register Field
-                            OutlinedTextField(
-                                value = upiInput,
-                                onValueChange = { upiInput = it.trim() },
-                                label = { Text("Your UPI ID (VPA)") },
-                                placeholder = { Text("e.g. 9876543210@paytm or name@upi", color = Color(0xFF6B7D82), fontSize = 13.sp) },
-                                leadingIcon = {
-                                    Icon(Icons.Default.AccountBalanceWallet, contentDescription = null, tint = DasaniPrimary)
-                                },
-                                singleLine = true,
-                                shape = RoundedCornerShape(10.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedContainerColor = Color(0xFF1A2124),
-                                    unfocusedContainerColor = Color(0xFF1A2124),
-                                    focusedBorderColor = DasaniPrimary,
-                                    unfocusedBorderColor = Color(0xFF263238),
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("upi_input_register")
-                            )
-
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color(0xFF0D251E), RoundedCornerShape(8.dp))
-                                    .padding(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.Verified, contentDescription = null, tint = DasaniPrimary, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Auto-binds your UPI for 1-click deposit & instant withdrawal!",
-                                    color = DasaniTextSecondary,
-                                    fontSize = 11.sp
-                                )
-                            }
-                        } else {
-                            // Mobile Number Register Field
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color(0xFF1A2124), RoundedCornerShape(10.dp))
-                                    .border(1.dp, Color(0xFF263238), RoundedCornerShape(10.dp))
-                                    .padding(horizontal = 14.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(text = "+91", color = DasaniPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                Box(modifier = Modifier.padding(horizontal = 10.dp).height(24.dp).width(1.dp).background(Color(0xFF37474F)))
-                                TextField(
-                                    value = phoneInput,
-                                    onValueChange = { phoneInput = it.take(10) },
-                                    placeholder = { Text("Enter 10-Digit Mobile", color = Color(0xFF6B7D82), fontSize = 14.sp) },
-                                    colors = TextFieldDefaults.colors(
-                                        focusedContainerColor = Color.Transparent,
-                                        unfocusedContainerColor = Color.Transparent,
-                                        focusedIndicatorColor = Color.Transparent,
-                                        unfocusedIndicatorColor = Color.Transparent,
-                                        focusedTextColor = Color.White,
-                                        unfocusedTextColor = Color.White
-                                    ),
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                                    singleLine = true,
-                                    modifier = Modifier.fillMaxWidth().testTag("phone_input")
-                                )
-                            }
                         }
                     } else {
-                        // Login Tab: Login with UPI ID or Mobile Number
                         OutlinedTextField(
                             value = loginIdentifierInput,
-                            onValueChange = { loginIdentifierInput = it },
-                            label = { Text("UPI ID or Mobile Number") },
-                            placeholder = { Text("e.g. yourname@paytm or 9876543210", color = Color(0xFF6B7D82), fontSize = 13.sp) },
+                            onValueChange = { loginIdentifierInput = it.trim() },
+                            label = { Text("UPI ID or Account ID") },
+                            placeholder = { Text("e.g. yourname@okaxis", color = Color(0xFF6B7D82), fontSize = 13.sp) },
                             leadingIcon = {
                                 Icon(Icons.Default.Person, contentDescription = null, tint = DasaniPrimary)
                             },
@@ -495,34 +418,26 @@ fun AuthScreen(
 
                     Spacer(modifier = Modifier.height(18.dp))
 
-                    // Primary Action Button (Teal pill)
                     Button(
                         onClick = {
                             if (isRegisterTab) {
-                                val primaryId = if (registerMode == 0) {
-                                    if (upiInput.isNotBlank()) upiInput else "farmer@upi"
-                                } else {
-                                    if (phoneInput.isNotBlank()) phoneInput else "9876543210"
-                                }
                                 val res = viewModel.register(
-                                    phoneInput = primaryId,
-                                    pass1 = if (passwordInput.isBlank()) "123456" else passwordInput,
-                                    pass2 = if (confirmPasswordInput.isBlank()) "123456" else confirmPasswordInput,
-                                    withdrawPass = if (withdrawalPasswordInput.isBlank()) "123456" else withdrawalPasswordInput,
+                                    phoneInput = upiInput,
+                                    pass1 = passwordInput,
+                                    pass2 = confirmPasswordInput,
+                                    withdrawPass = withdrawalPasswordInput,
                                     invite = inviteCodeInput,
-                                    upiIdInput = if (registerMode == 0) upiInput else ""
+                                    upiIdInput = upiInput
                                 )
-                                if (res.first) onAuthSuccess()
-                            } else {
-                                val loginId = when {
-                                    loginIdentifierInput.isNotBlank() -> loginIdentifierInput
-                                    phoneInput.isNotBlank() -> phoneInput
-                                    upiInput.isNotBlank() -> upiInput
-                                    else -> "farmer@upi"
+                                if (res.first) {
+                                    onAuthSuccess()
+                                } else {
+                                    viewModel.showToast(res.second)
                                 }
+                            } else {
                                 val success = viewModel.login(
-                                    phoneInput = loginId,
-                                    passInput = if (passwordInput.isBlank()) "123456" else passwordInput
+                                    phoneInput = loginIdentifierInput,
+                                    passInput = passwordInput
                                 )
                                 if (success) onAuthSuccess()
                             }
@@ -541,38 +456,6 @@ fun AuthScreen(
                             text = if (isRegisterTab) "Register & Bind UPI" else "Login with Password",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Quick Demo auto-fill button
-                    OutlinedButton(
-                        onClick = {
-                            upiInput = "farmer987@upi"
-                            loginIdentifierInput = "farmer987@upi"
-                            phoneInput = "9876543210"
-                            passwordInput = "123456"
-                            confirmPasswordInput = "123456"
-                            withdrawalPasswordInput = "123456"
-                            inviteCodeInput = "c07cdf4c"
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(25.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, DasaniPrimary.copy(alpha = 0.5f))
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Bolt,
-                            contentDescription = null,
-                            tint = DasaniPrimary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Auto-fill UPI Demo Account",
-                            color = DasaniPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }

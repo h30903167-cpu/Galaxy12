@@ -49,6 +49,11 @@ fun WithdrawScreen(
     var holderName by remember { mutableStateOf(userAccount.boundHolderName) }
     var ifscCode by remember { mutableStateOf(userAccount.boundIfsc) }
     var upiId by remember { mutableStateOf(userAccount.boundUpiId) }
+    LaunchedEffect(userAccount.boundUpiId) {
+        if (userAccount.boundUpiId.isNotBlank()) {
+            upiId = userAccount.boundUpiId
+        }
+    }
     var withdrawPasswordInput by remember { mutableStateOf("") }
     var withdrawPassVisible by remember { mutableStateOf(false) }
 
@@ -529,7 +534,7 @@ fun WithdrawScreen(
                                         Spacer(modifier = Modifier.height(10.dp))
 
                                         Text(
-                                            text = if (isVideoPlaying) "▶ Playing Tutorial..." else "Watch Live Withdrawal Demonstration",
+                                            text = if (isVideoPlaying) "▶ Playing Guide..." else "Watch Withdrawal Guide Video",
                                             color = Color.White,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Bold

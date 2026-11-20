@@ -62,7 +62,8 @@ data class WithdrawalRecord(
 )
 
 data class TeamMember(
-    val phone: String,
+    val memberId: String = "",
+    val phone: String = "",
     val level: Int,
     val recharge: Double,
     val commissionEarned: Double,
@@ -70,30 +71,31 @@ data class TeamMember(
 )
 
 data class UserAccount(
-    val phone: String = "+91 98765 43210",
-    val loginPassword: String = "123456",
-    val withdrawalPassword: String = "123456",
-    val inviteCode: String = "c07cdf4c",
+    val accountId: String = "GL-MEMBER",
+    val phone: String = "",
+    val loginPassword: String = "",
+    val withdrawalPassword: String = "",
+    val inviteCode: String = "",
     val walletBalance: Double = 0.0,
     val totalIncome: Double = 0.0,
     val todayIncome: Double = 0.0,
     val totalRecharged: Double = 0.0,
     val totalWithdrawn: Double = 0.0,
-    val isLoggedIn: Boolean = true,
-    val boundBankName: String = "State Bank of India",
-    val boundAccountNo: String = "392019482910",
-    val boundHolderName: String = "Galaxy Equipment Partner",
-    val boundIfsc: String = "SBIN0001234",
-    val boundUpiId: String = "user@upi",
+    val isLoggedIn: Boolean = false,
+    val boundBankName: String = "",
+    val boundAccountNo: String = "",
+    val boundHolderName: String = "",
+    val boundIfsc: String = "",
+    val boundUpiId: String = "",
     val registeredWithUpi: Boolean = false
 )
 
 data class WithdrawalTutorialVideo(
     val id: String = "vid_1",
-    val title: String = "Official Galaxy Seeder Withdrawal Guide & Payment Proof",
-    val videoUrl: String = "https://example.com/galaxy_seeder_withdrawal_guide.mp4",
+    val title: String = "Official Galaxy Seeder Withdrawal Guide",
+    val videoUrl: String = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
     val duration: String = "02:45",
-    val description: String = "Watch the step-by-step tutorial on how to bind your bank card, submit instant withdrawal, and receive funds in your bank account in 10-30 minutes."
+    val description: String = "Watch the step-by-step guide on how to bind your bank card or UPI ID, submit withdrawal, and receive funds in 10-30 minutes."
 )
 
 data class ServiceChatMessage(

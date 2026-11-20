@@ -66,12 +66,6 @@ enum class PaymentMethodType(
         title = "Net Banking & Debit Card Gateway",
         subtitle = "Secure 256-Bit encrypted bank gateway",
         badge = "SECURE"
-    ),
-    INSTANT_SANDBOX(
-        id = "sandbox",
-        title = "⚡ Instant Sandbox Demo Credit",
-        subtitle = "One-click test credit for immediate trial",
-        badge = "TEST MODE"
     )
 }
 
@@ -88,7 +82,6 @@ fun RechargeScreen(
     var selectedAmount by remember { mutableStateOf(300.0) }
     var customAmountText by remember { mutableStateOf("300") }
     var selectedMethod by remember { mutableStateOf(PaymentMethodType.UPI_FASTPAY) }
-    var utrInput by remember { mutableStateOf("") }
     var activeTab by remember { mutableStateOf(0) } // 0: Recharge, 1: Records
     var showConfirmDialog by remember { mutableStateOf(false) }
     var amountErrorMessage by remember { mutableStateOf<String?>(null) }
@@ -109,11 +102,7 @@ fun RechargeScreen(
         100000.0 // 1 Lakh (Maximum transaction limit)
     )
 
-    val officialUpiId = remember(context) { MerchantUpiProvider.getAssignedMerchantUpi(context) }
-    val merchantBankName = "HDFC Bank Ltd."
-    val merchantAccountNo = "50200084920194"
-    val merchantIfsc = "HDFC0001234"
-    val merchantHolder = "Galaxy Agriculture Equipment Ltd."
+    var officialUpiId by remember { mutableStateOf(MerchantUpiProvider.rotateMerchantUpi(context)) }
 
     fun validateAmount(text: String): Double {
         val num = text.toDoubleOrNull() ?: 0.0
@@ -243,7 +232,7 @@ fun RechargeScreen(
                                         fontWeight = FontWeight.Bold
                                     )
                                     Text(
-                                        text = "Official merchant account • 100% automated credit with UTR",
+                                        text = "Official merchant account • 100% instant UPI credit",
                                         color = DasaniTextSecondary,
                                         fontSize = 11.sp
                                     )
@@ -483,7 +472,12 @@ fun RechargeScreen(
                                 PaymentMethodCard(
                                     method = method,
                                     isSelected = selectedMethod == method,
-                                    onSelect = { selectedMethod = method }
+                                    onSelect = {
+                                        selectedMethod = method
+                                        if (method == PaymentMethodType.UPI_FASTPAY || method == PaymentMethodType.DYNAMIC_QR) {
+                                            officialUpiId = MerchantUpiProvider.rotateMerchantUpi(context)
+                                        }
+                                    }
                                 )
                             }
                         }
@@ -529,124 +523,33 @@ fun RechargeScreen(
 
                                 when (selectedMethod) {
                                     PaymentMethodType.UPI_FASTPAY, PaymentMethodType.DYNAMIC_QR -> {
-                                        // Registered UPI ID Banner
-                                        Card(
+                                        // Official Merchant UPI ID Copy & Rotate Box
+                                        Row(
                                             modifier = Modifier.fillMaxWidth(),
-                                            shape = RoundedCornerShape(12.dp),
-                                            colors = CardDefaults.cardColors(containerColor = Color(0xFF142B24)),
-                                            border = androidx.compose.foundation.BorderStroke(1.dp, DasaniPrimary.copy(alpha = 0.5f))
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Row(
-                                                modifier = Modifier.padding(12.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Icon(Icons.Default.Verified, contentDescription = null, tint = DasaniPrimary, modifier = Modifier.size(20.dp))
-                                                Spacer(modifier = Modifier.width(8.dp))
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        text = "Paying from Registered UPI",
-                                                        color = DasaniTextSecondary,
-                                                        fontSize = 11.sp
-                                                    )
-                                                    Text(
-                                                        text = userAccount.boundUpiId,
-                                                        color = Color.White,
-                                                        fontSize = 14.sp,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                }
-                                                Surface(
-                                                    shape = RoundedCornerShape(6.dp),
-                                                    color = DasaniPrimary.copy(alpha = 0.2f)
-                                                ) {
-                                                    Text(
-                                                        text = "AUTO LINKED",
-                                                        color = DasaniPrimary,
-                                                        fontSize = 10.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        Spacer(modifier = Modifier.height(10.dp))
-
-                                        // 1-Click Instant Deposit Button
-                                        Button(
-                                            onClick = {
-                                                val autoUtr = "${(100000000000L..999999999999L).random()}"
-                                                viewModel.recharge(
-                                                    amount = selectedAmount,
-                                                    channel = "Direct UPI (${userAccount.boundUpiId})",
-                                                    utr = autoUtr
-                                                )
-                                            },
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(48.dp)
-                                                .testTag("instant_upi_pay_button"),
-                                            shape = RoundedCornerShape(24.dp),
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = DasaniPrimary,
-                                                contentColor = Color(0xFF041C1A)
-                                            )
-                                        ) {
-                                            Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(20.dp))
-                                            Spacer(modifier = Modifier.width(6.dp))
                                             Text(
-                                                text = "⚡ Instant Pay ₹${selectedAmount.toInt()} via ${userAccount.boundUpiId}",
+                                                text = "Merchant UPI Payment:",
+                                                color = DasaniPrimary,
                                                 fontSize = 13.sp,
                                                 fontWeight = FontWeight.Bold
                                             )
-                                        }
-
-                                        Spacer(modifier = Modifier.height(14.dp))
-
-                                        // UPI Apps Quick Launcher (PhonePe, GPay, Paytm, BHIM)
-                                        Text(
-                                            text = "Or Pay with UPI App:",
-                                            color = Color.White,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            listOf("PhonePe", "GPay", "Paytm", "BHIM").forEach { appName ->
-                                                OutlinedButton(
-                                                    onClick = {
-                                                        val upiUri = "upi://pay?pa=$officialUpiId&pn=GalaxyAgriculture&am=${selectedAmount.toLong()}&cu=INR"
-                                                        try {
-                                                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(upiUri))
-                                                            context.startActivity(intent)
-                                                        } catch (e: Exception) {
-                                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                                            clipboard.setPrimaryClip(ClipData.newPlainText("Galaxy UPI", officialUpiId))
-                                                            viewModel.showToast("Merchant UPI copied: $officialUpiId")
-                                                        }
-                                                    },
-                                                    modifier = Modifier.weight(1f).height(36.dp),
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    border = androidx.compose.foundation.BorderStroke(1.dp, DasaniPrimary.copy(alpha = 0.5f)),
-                                                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp)
-                                                ) {
-                                                    Text(appName, fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                                                }
+                                            OutlinedButton(
+                                                onClick = {
+                                                    officialUpiId = MerchantUpiProvider.rotateMerchantUpi(context)
+                                                    viewModel.showToast("Switched UPI: $officialUpiId")
+                                                },
+                                                shape = RoundedCornerShape(14.dp),
+                                                border = androidx.compose.foundation.BorderStroke(1.dp, DasaniPrimary.copy(alpha = 0.6f)),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                                modifier = Modifier.height(30.dp)
+                                            ) {
+                                                Icon(Icons.Default.Refresh, contentDescription = "Change UPI ID", tint = DasaniPrimary, modifier = Modifier.size(14.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Change UPI", fontSize = 11.sp, color = DasaniPrimary, fontWeight = FontWeight.Bold)
                                             }
                                         }
-
-                                        Spacer(modifier = Modifier.height(14.dp))
-
-                                        // Official Merchant UPI ID Copy Box
-                                        Text(
-                                            text = "Official Merchant UPI Details:",
-                                            color = DasaniPrimary,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
                                         Spacer(modifier = Modifier.height(8.dp))
 
                                         Row(
@@ -658,7 +561,7 @@ fun RechargeScreen(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Column(modifier = Modifier.weight(1f)) {
-                                                Text("Verified Merchant UPI ID (This Phone)", color = DasaniTextSecondary, fontSize = 11.sp)
+                                                Text("Assigned Merchant UPI ID", color = DasaniTextSecondary, fontSize = 11.sp)
                                                 Text(
                                                     text = officialUpiId,
                                                     color = Color.White,
@@ -685,6 +588,57 @@ fun RechargeScreen(
                                                 Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
                                                 Spacer(modifier = Modifier.width(4.dp))
                                                 Text("Copy UPI", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(12.dp))
+
+                                        // UPI Apps Quick Launcher (PhonePe, GPay, Paytm, BHIM)
+                                        Text(
+                                            text = "Step 1: Pay via UPI App:",
+                                            color = Color.White,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            listOf(
+                                                Triple("PhonePe", "phonepe", "pay"),
+                                                Triple("GPay", "tez", "upi"),
+                                                Triple("Paytm", "paytmmp", "pay"),
+                                                Triple("BHIM", "upi", "pay")
+                                            ).forEach { (appName, scheme, host) ->
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                        clipboard.setPrimaryClip(ClipData.newPlainText("Galaxy UPI", officialUpiId))
+                                                        val appUri = if (appName == "GPay") {
+                                                            MerchantUpiProvider.buildUpiPaymentUri(officialUpiId, selectedAmount, "tez", "upi")
+                                                                .buildUpon().appendPath("pay").build()
+                                                        } else {
+                                                            MerchantUpiProvider.buildUpiPaymentUri(officialUpiId, selectedAmount, scheme, host)
+                                                        }
+                                                        val genericUri = MerchantUpiProvider.buildUpiPaymentUri(officialUpiId, selectedAmount)
+                                                        try {
+                                                            context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, appUri))
+                                                        } catch (_: Exception) {
+                                                            try {
+                                                                context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, genericUri))
+                                                            } catch (_: Exception) {
+                                                                viewModel.showToast("UPI ID copied ($officialUpiId). Paste in $appName to pay.")
+                                                            }
+                                                        }
+                                                    },
+                                                    modifier = Modifier.weight(1f).height(36.dp),
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    border = androidx.compose.foundation.BorderStroke(1.dp, DasaniPrimary.copy(alpha = 0.5f)),
+                                                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(appName, fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                                }
                                             }
                                         }
 
@@ -725,39 +679,11 @@ fun RechargeScreen(
                                             }
                                         }
 
-                                        Spacer(modifier = Modifier.height(14.dp))
-                                        Text(
-                                            text = "Step 2: Enter 12-Digit Bank UTR / Reference No.",
-                                            color = DasaniPrimary,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Spacer(modifier = Modifier.height(6.dp))
-
-                                        OutlinedTextField(
-                                            value = utrInput,
-                                            onValueChange = { utrInput = it.take(12) },
-                                            placeholder = { Text("Enter 12-Digit UTR (e.g. 431289456721)", color = Color(0xFF6B7D82), fontSize = 13.sp) },
-                                            singleLine = true,
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                            shape = RoundedCornerShape(10.dp),
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedContainerColor = Color(0xFF182D2B),
-                                                unfocusedContainerColor = Color(0xFF182D2B),
-                                                focusedBorderColor = DasaniPrimary,
-                                                unfocusedBorderColor = DasaniCardBorder,
-                                                focusedTextColor = Color.White,
-                                                unfocusedTextColor = Color.White
-                                            ),
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .testTag("utr_input")
-                                        )
                                     }
 
                                     PaymentMethodType.BANK_IMPS_RTGS -> {
                                         Text(
-                                            text = "Official Bank Account Details (₹50k - ₹1 Lakh)",
+                                            text = "High-Limit IMPS / RTGS Payment Desk",
                                             color = DasaniPrimary,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Bold
@@ -769,38 +695,15 @@ fun RechargeScreen(
                                                 .fillMaxWidth()
                                                 .background(Color(0xFF182D2B), RoundedCornerShape(10.dp))
                                                 .padding(12.dp),
-                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
-                                            BankDetailRow("Beneficiary Name", merchantHolder, context)
-                                            BankDetailRow("Bank Name", merchantBankName, context)
-                                            BankDetailRow("Account Number", merchantAccountNo, context)
-                                            BankDetailRow("IFSC Code", merchantIfsc, context)
+                                            Text(
+                                                text = "Pay via active Merchant UPI ($officialUpiId) or contact Official Telegram Care (@GalaxySeederCare) for IMPS/RTGS bank transfer details.",
+                                                color = DasaniTextSecondary,
+                                                fontSize = 12.sp
+                                            )
                                         }
 
-                                        Spacer(modifier = Modifier.height(12.dp))
-                                        Text(
-                                            text = "Enter IMPS / RTGS Transaction Reference No.",
-                                            color = DasaniPrimary,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        OutlinedTextField(
-                                            value = utrInput,
-                                            onValueChange = { utrInput = it },
-                                            placeholder = { Text("Bank Reference / UTR Number", color = Color(0xFF6B7D82), fontSize = 13.sp) },
-                                            singleLine = true,
-                                            shape = RoundedCornerShape(10.dp),
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedContainerColor = Color(0xFF182D2B),
-                                                unfocusedContainerColor = Color(0xFF182D2B),
-                                                focusedBorderColor = DasaniPrimary,
-                                                unfocusedBorderColor = DasaniCardBorder,
-                                                focusedTextColor = Color.White,
-                                                unfocusedTextColor = Color.White
-                                            ),
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
                                     }
 
                                     PaymentMethodType.CARD_NETBANKING -> {
@@ -824,29 +727,6 @@ fun RechargeScreen(
                                                 color = DasaniTextSecondary,
                                                 fontSize = 12.sp,
                                                 textAlign = TextAlign.Center
-                                            )
-                                        }
-                                    }
-
-                                    PaymentMethodType.INSTANT_SANDBOX -> {
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .background(Color(0xFF26210A), RoundedCornerShape(10.dp))
-                                                .border(1.dp, DasaniAccentGold.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
-                                                .padding(14.dp)
-                                        ) {
-                                            Text(
-                                                text = "⚡ Instant Testing Sandbox Mode",
-                                                color = DasaniAccentGold,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 13.sp
-                                            )
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text(
-                                                text = "Credits ₹${"%,d".format(selectedAmount.toLong())} immediately to test purchasing Product A, B, C or VIP plans without real money transfer.",
-                                                color = Color.White,
-                                                fontSize = 12.sp
                                             )
                                         }
                                     }
@@ -876,66 +756,10 @@ fun RechargeScreen(
                                     Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "Secure Pay ₹${"%,d".format(selectedAmount.toLong())}",
-                                        fontSize = 16.sp,
+                                        text = "Confirm Recharge ₹${"%,d".format(selectedAmount.toLong())}",
+                                        fontSize = 15.sp,
                                         fontWeight = FontWeight.Bold
                                     )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Quick 1-Click Sandbox Test Shortcuts
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF142423))
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Text(
-                                    text = "⚡ 1-Click Fast Sandbox Testing",
-                                    color = DasaniPrimary,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Button(
-                                        onClick = {
-                                            viewModel.recharge(550.0, "Demo FastPay", "UTR550${System.currentTimeMillis() % 10000}")
-                                        },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(8.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00B4D8))
-                                    ) {
-                                        Text("+₹550", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
-
-                                    Button(
-                                        onClick = {
-                                            viewModel.recharge(10000.0, "Demo FastPay", "UTR10K${System.currentTimeMillis() % 10000}")
-                                        },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(8.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF009688))
-                                    ) {
-                                        Text("+₹10,000", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
-
-                                    Button(
-                                        onClick = {
-                                            viewModel.recharge(100000.0, "Demo 1-Lakh Gateway", "UTR1LAKH${System.currentTimeMillis() % 10000}")
-                                        },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(8.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = DasaniAccentGold, contentColor = Color.Black)
-                                    ) {
-                                        Text("+₹1 Lakh", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
                                 }
                             }
                         }
@@ -1016,12 +840,12 @@ fun RechargeScreen(
                     Button(
                         onClick = {
                             showConfirmDialog = false
-                            val utrVal = if (utrInput.isNotBlank()) utrInput else "UTR${System.currentTimeMillis() % 1000000000}"
                             viewModel.recharge(
                                 amount = selectedAmount,
                                 channel = "${selectedMethod.title} ($officialUpiId)",
-                                utr = utrVal
+                                utr = ""
                             )
+                            officialUpiId = MerchantUpiProvider.rotateMerchantUpi(context)
                             onBack()
                         },
                         colors = ButtonDefaults.buttonColors(
@@ -1243,13 +1067,8 @@ fun RechargeRecordItem(record: RechargeRecord) {
             Spacer(modifier = Modifier.height(4.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.End
             ) {
-                Text(
-                    text = "UTR: ${record.utr}",
-                    color = DasaniTextMuted,
-                    fontSize = 11.sp
-                )
                 Text(
                     text = record.date,
                     color = DasaniTextMuted,

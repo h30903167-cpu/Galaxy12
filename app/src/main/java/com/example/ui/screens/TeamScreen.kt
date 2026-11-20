@@ -294,7 +294,7 @@ fun TeamScreen(
                                                 Icon(Icons.Default.Person, contentDescription = null, tint = DasaniPrimary)
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Column {
-                                                    Text(member.phone, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                    Text("Partner ${member.memberId.ifBlank { "Member" }}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                                     Text(member.date, color = DasaniTextMuted, fontSize = 10.sp)
                                                 }
                                             }
@@ -315,41 +315,6 @@ fun TeamScreen(
                                         Text("Invite More Friends", fontWeight = FontWeight.Bold)
                                     }
                                 }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(18.dp))
-
-                    // Demo Team Member invite simulator (for live presentation & testing)
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF142423))
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Text(
-                                text = "⚡ Simulate Referral Join (Demo)",
-                                color = DasaniPrimary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "Test adding a member who recharges ₹550 to immediately test earning the 20% commission (₹110):",
-                                color = DasaniTextSecondary,
-                                fontSize = 11.sp
-                            )
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Button(
-                                onClick = {
-                                    val randomPhone = "+91 98${(100..999).random()} ${(1000..9999).random()}"
-                                    viewModel.simulateAddTeamMember(randomPhone, 550.0)
-                                },
-                                shape = RoundedCornerShape(18.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = DasaniPrimary.copy(alpha = 0.25f), contentColor = DasaniPrimary)
-                            ) {
-                                Text("+ Simulate Level 1 Member (Recharge ₹550)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

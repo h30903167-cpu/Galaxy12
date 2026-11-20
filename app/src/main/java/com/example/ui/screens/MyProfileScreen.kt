@@ -44,7 +44,7 @@ fun MyProfileScreen(
     val scrollState = rememberScrollState()
 
     var showBankDialog by remember { mutableStateOf(false) }
-    var showPassDialog by remember { mutableStateOf(false) }
+    var showUpiDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -94,9 +94,9 @@ fun MyProfileScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = userAccount.phone,
+                                text = userAccount.boundUpiId.ifBlank { "Galaxy Member" },
                                 color = Color.White,
-                                fontSize = 17.sp,
+                                fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Spacer(modifier = Modifier.width(8.dp))
@@ -116,7 +116,7 @@ fun MyProfileScreen(
 
                         Spacer(modifier = Modifier.height(3.dp))
                         Text(
-                            text = "Linked UPI: ${userAccount.boundUpiId}",
+                            text = "Linked UPI: ${userAccount.boundUpiId.ifBlank { "Not Linked" }}",
                             color = DasaniPrimary,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
@@ -248,18 +248,22 @@ fun MyProfileScreen(
             ) {
                 Column {
                     ProfileMenuRow(
-                        title = "Bind Bank Card / UPI",
-                        subtitle = "${userAccount.boundBankName} (${userAccount.boundAccountNo.takeLast(4)})",
-                        icon = Icons.Default.AccountBalance,
-                        onClick = { showBankDialog = true }
+                        title = "Bind / Change Payout UPI ID",
+                        subtitle = userAccount.boundUpiId.ifBlank { "Tap to link or change your UPI ID" },
+                        icon = Icons.Default.QrCode,
+                        onClick = { showUpiDialog = true }
                     )
                     HorizontalDivider(color = DasaniCardBorder, modifier = Modifier.padding(horizontal = 14.dp))
 
                     ProfileMenuRow(
-                        title = "Change Security Passwords",
-                        subtitle = "Login & Withdrawal PIN",
-                        icon = Icons.Default.Lock,
-                        onClick = { showPassDialog = true }
+                        title = "Bind Bank Account",
+                        subtitle = if (userAccount.boundBankName.isNotBlank()) {
+                            "${userAccount.boundBankName} (${userAccount.boundAccountNo.takeLast(4)})"
+                        } else {
+                            "Tap to link your bank account"
+                        },
+                        icon = Icons.Default.AccountBalance,
+                        onClick = { showBankDialog = true }
                     )
                     HorizontalDivider(color = DasaniCardBorder, modifier = Modifier.padding(horizontal = 14.dp))
 
@@ -351,6 +355,7 @@ fun MyProfileScreen(
                 confirmButton = {
                     Button(
                         onClick = {
+                            viewModel.updateBoundBank(hName, bName, accNo, ifsc)
                             showBankDialog = false
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = DasaniPrimary, contentColor = Color(0xFF041C1A))
@@ -360,6 +365,42 @@ fun MyProfileScreen(
                 },
                 dismissButton = {
                     TextButton(onClick = { showBankDialog = false }) {
+                        Text("Cancel", color = DasaniTextSecondary)
+                    }
+                }
+            )
+        }
+
+        if (showUpiDialog) {
+            var newUpi by remember { mutableStateOf(userAccount.boundUpiId) }
+            AlertDialog(
+                onDismissRequest = { showUpiDialog = false },
+                containerColor = Color(0xFF132221),
+                title = { Text("Bind / Change UPI ID", color = Color.White, fontWeight = FontWeight.Bold) },
+                text = {
+                    OutlinedTextField(
+                        value = newUpi,
+                        onValueChange = { newUpi = it.trim() },
+                        label = { Text("Your Payout UPI ID") },
+                        placeholder = { Text("e.g. yourname@okaxis") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (viewModel.updateBoundUpi(newUpi)) {
+                                showUpiDialog = false
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = DasaniPrimary, contentColor = Color(0xFF041C1A))
+                    ) {
+                        Text("Save UPI ID", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showUpiDialog = false }) {
                         Text("Cancel", color = DasaniTextSecondary)
                     }
                 }
